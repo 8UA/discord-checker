@@ -1,3 +1,5 @@
+[THIS DOESN'T WORK ANYMORE CAUSE OF HCAPTCHA IMPLEMENTATION.]
+
 This Python script sends requests to the Discord API to check if a specified username is available or taken.
 
 Your Discord token is required to access the API, you will need to add it into your ".env" file.
