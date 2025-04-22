@@ -7,116 +7,190 @@ from dotenv import load_dotenv, find_dotenv
 from datetime import datetime
 from time import sleep
 
-#fixxed the issue
 load_dotenv(find_dotenv())
-token = os.environ.get("AUTH_TOKEN")
+TOKEN = os.environ.get("AUTH_TOKEN")
 
-# Configurations #
-l = 4  # Generated usernames length (Default: 4)
-t = 1  # Delay between requests (Default: 1 Second)
+OUTPUT_DIR = "output"
+LIST_DIR = "lists"
+os.makedirs(OUTPUT_DIR, exist_ok=True)
+os.makedirs(LIST_DIR, exist_ok=True)
 
 print(
-    """
+"""
  █▀▀▄  ▀  █▀▀ █▀▀ █▀▀█ █▀▀█ █▀▀▄    █▀▀█ █  █ █▀▀ █▀▀ █ █ █▀▀ █▀▀█ 
  █  █ ▀█▀ ▀▀█ █   █  █ █▄▄▀ █  █ ▀▀ █    █▀▀█ █▀▀ █   █▀▄ █▀▀ █▄▄▀ 
  █▄▄▀ ▀▀▀ ▀▀▀ ▀▀▀ ▀▀▀▀ ▀ ▀▀ ▀▀▀     █▄▄█ ▀  ▀ ▀▀▀ ▀▀▀ ▀ ▀ ▀▀▀ ▀ ▀▀
 """
 )
 
-try:
-    i = int(input("▾▾▾ Options ▾▾▾\n\n1. Generate & check random usernames\n2. Read usernames from file\n\n▸ "))
-    print()
-except ValueError:
-    print("You dummy >:(")
-    sys.exit()
-
-output_dir = "output"
-os.makedirs(output_dir, exist_ok=True)
-timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
-
 
 def check_username(username):
     try:
-        response = requests.patch(
-            'https://discord.com/api/v9/users/@me',
+        r = requests.post(
+            "https://discord.com/api/v9/users/@me/pomelo-attempt",
             headers={
-                'Authorization': f'{token}'
+                "Authorization": TOKEN,
+                "content-type": "application/json"
             },
-            json={
-                "username": f"{username}",
-                "password": ""
-            },
+            json={"username": username},
+            timeout=10
         )
 
-        if response.status_code == 401:
-            print("Unauthorized, Please add your Discord token into your '.env' file.")
+        if r.status_code == 401:
+            print("Unauthorized. Add your pomelo auth token to .env file.")
             sleep(10)
+            sys.exit(1)
+        
+        data = r.json()
+        if data.get("taken") is True:
+            print(f"Username taken: {username}")
+            return None
         else:
-            data = response.json()
-            if "USERNAME_ALREADY_TAKEN" in response.content.decode():
-                print(f"Username taken: {username}")
-            else:
-                print(f"Username available: {username} \n{response.content,}\n")
-                return username
+            print(f"Username available: {username}")
+            return username
+            
+    except requests.exceptions.RequestException as e:
+        print(f"Request error: {username} - {e}")
     except Exception as e:
-        print(f"Error occurred for username {username}: {e}")
+        print(f"Error: {username} - {e}")
+    
     return None
 
 
+def generate_username(length):
+    chars = string.ascii_lowercase + string.digits + "_."
+    return ''.join(secrets.choice(chars) for _ in range(length))
+
+
+def get_delay():
+    try:
+        delay = float(input("Delay between requests in seconds: "))
+        return delay
+    except ValueError:
+        print("Invalid input. Using default: 1s")
+        return 1.0
+
+
 def generate_and_check_usernames():
-    output_file = f"{output_dir}/available_username_data_{timestamp}.txt"
-    with open(output_file, "w") as f:
-        while True:
-            username = ''.join(secrets.choice(string.ascii_lowercase + string.digits + "_.") for _ in range(l))
-            result = check_username(username)
-            if result:
-                f.write(result + "\n")
-            sleep(t)
+    try:
+        username_length = int(input("Username length (2-32): "))
+        if username_length < 2 or username_length > 32:
+            print("Invalid length. Using default: 4")
+            username_length = 4
+    except ValueError:
+        print("Invalid input. Using default: 4")
+        username_length = 4
+    
+    delay = get_delay()
+    
+    timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
+    output_file = f"{OUTPUT_DIR}/available_generated_{timestamp}.txt"
+    checked = set()
+    
+    print(f"\nChecking usernames ({username_length} chars)")
+    print(f"Delay: {delay}s between requests")
+    print(f"Saving to: {output_file}")
+    
+    try:
+        with open(output_file, "w") as f:
+            while True:
+                username = generate_username(username_length)
+                if username not in checked:
+                    checked.add(username)
+                    result = check_username(username)
+                    if result:
+                        f.write(f"{result}\n")
+                        f.flush()
+                    sleep(delay)
+    
+    except KeyboardInterrupt:
+        print("\nStopped.")
 
 
 def read_usernames_from_file():
-    list_dir = "lists"
-    os.makedirs(list_dir, exist_ok=True)
-
-    files = os.listdir(list_dir)
-    txt_files = [f for f in files if f.endswith(".txt")]
+    txt_files = [f for f in os.listdir(LIST_DIR) if f.endswith(".txt")]
 
     if not txt_files:
-        print("No text files found in the 'lists' directory.")
+        print(f"No .txt files found in '{LIST_DIR}' directory.")
         return
 
-    print("Available text files in 'lists' directory:")
+    print("Available files:")
     for i, filename in enumerate(txt_files):
         print(f"{i + 1}. {filename}")
 
     try:
-        selection = int(input("Select a text file to read usernames from (enter the corresponding number): "))
+        selection = int(input("\nSelect file: "))
         if selection < 1 or selection > len(txt_files):
             print("Invalid selection.")
             return
 
         selected_file = txt_files[selection - 1]
-        file_path = os.path.join(list_dir, selected_file)
-
-        output_file = f"{output_dir}/available_username_data_{timestamp}.txt"
-        with open(file_path, "r") as userlist, open(output_file, "w") as f:
-            for user in userlist:
-                result = check_username(user.strip())
+        file_path = os.path.join(LIST_DIR, selected_file)
+        
+        delay = get_delay()
+        
+        timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
+        output_file = f"{OUTPUT_DIR}/available_from_file_{timestamp}.txt"
+        
+        available = 0
+        total = 0
+        
+        print(f"\nDelay: {delay}s between requests")
+        print(f"Saving to: {output_file}")
+        
+        with open(file_path, "r") as in_file, open(output_file, "w") as out_file:
+            for line in in_file:
+                username = line.strip()
+                if not username:
+                    continue
+                    
+                total += 1
+                result = check_username(username)
                 if result:
-                    f.write(result + "\n")
-                sleep(t)
+                    out_file.write(f"{result}\n")
+                    out_file.flush()
+                    available += 1
+                
+                sleep(delay)
+        
+        print(f"\nFound {available} available usernames out of {total}")
+        print(f"Results saved to {output_file}")
 
     except ValueError:
-        print("Invalid input.")
+        print("Invalid input. Enter a number.")
+    except Exception as e:
+        print(f"Error: {e}")
 
 
 def main():
-    if i == 1:
+    if not TOKEN:
+        print("Token not found!")
+        print("Create a .env file with your pomelo auth token.")
+        sleep(10)
+        sys.exit(1)
+    
+    try:
+        print("▾▾▾ Options ▾▾▾\n")
+        print("1. Generate & check random usernames")
+        print("2. Read usernames from file\n")
+        opt = int(input("▸ "))
+        print()
+    except ValueError:
+        print("Invalid option.")
+        sys.exit(1)
+    
+    if opt == 1:
         generate_and_check_usernames()
-    elif i == 2:
+    elif opt == 2:
         read_usernames_from_file()
     else:
-        print("No")
+        print("Invalid option.")
+        sys.exit(1)
 
 
-main()
+if __name__ == "__main__":
+    try:
+        main()
+    except KeyboardInterrupt:
+        print("\nBye :(")
+        sys.exit(0)
